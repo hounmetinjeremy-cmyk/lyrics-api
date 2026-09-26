@@ -1,0 +1,7 @@
+[vars]
+WORKERS_DEV = true
+
+[build]
+watch_dir = "src"
+
+main = "dist/index.js"
