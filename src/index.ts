@@ -1,4 +1,4 @@
-import { GitHub, NetEase, Provider, QQMusic, SearchParams } from './providers'
+import { Genius, GitHub, LyricsOvh, ParolesNet, Provider, SearchParams } from './providers'
 import { createURLWithQuery, getUserId, normalizeLRC } from './utils'
 
 const cache = caches.default
@@ -19,51 +19,64 @@ const notFound = () =>
 const handleRequest = async (event: FetchEvent) => {
   const { request } = event
   const { pathname } = new URL(request.url)
-  const lyricsUrl = createURLWithQuery(new URL(pathname, request.url), {} as Record<string, string>)
-  const cacheKey = new Request(lyricsUrl, request)
-  let response = await cache.match(cacheKey)
-  if (response) return response
-  response = await resolveLyrics(request)
-  if (!response) return notFound()
-  event.waitUntil(cache.put(cacheKey, response.clone()))
-  return response
-}
 
-const resolveLyrics = async (request: Request) => {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', { status: 405 })
+  }
+
+  if (pathname !== '/') {
+    return notFound()
+  }
+
   const { searchParams } = new URL(request.url)
   const rawName = searchParams.get('name') ?? ''
   const rawArtist = searchParams.get('artist') ?? ''
-  if (!rawName || !rawArtist) return
 
-  const [name, artist] = [rawName, rawArtist].map((text) => text.replace(/\(.*\)|\[.*\]/g, '').trim())
-  const searchParamsObj: SearchParams = { name, artist, rawName, rawArtist }
-
-  for (const provider of [new GitHub(), new NetEase(), new QQMusic()] as Provider[]) {
-    try {
-      const lyrics = await provider.getBestMatched(searchParamsObj)
-      if (lyrics) {
-        return new Response(normalizeLRC(lyrics), {
-          headers: {
-            'content-type': 'text/plain; charset=utf-8',
-            'cache-control': 'max-age=86400',
-          },
-        })
-      }
-    } catch (e) {}
+  if (!rawName || !rawArtist) {
+    return new Response('Missing name or artist', {
+      status: 400,
+      headers: { 'content-type': 'text/plain' },
+    })
   }
 
-  const userId = await getUserId(request)
-  await logToLogflare({ name, artist, userId })
-}
+  const name = rawName.toLowerCase()
+  const artist = rawArtist.toLowerCase()
 
-const logToLogflare = async (payload: any) => {
-  if (typeof LOGFLARE_SOURCE === 'undefined' || typeof LOGFLARE_API_KEY === 'undefined') return
-  fetch('https://api.logflare.app/logs/json', {
-    method: 'POST',
+  const cacheKey = new URL(
+    createURLWithQuery(new URL('https://cache/'), { name, artist }),
+    request.url,
+  ).toString()
+
+  let response = await cache.match(cacheKey)
+  if (response) return response
+
+  const searchParamsObj: SearchParams = { name, artist, rawName, rawArtist }
+  const providers: Provider[] = [new LyricsOvh(), new Genius(), new GitHub(), new ParolesNet()]
+
+  let lyrics: string | undefined
+  for (const provider of providers) {
+    try {
+      lyrics = await provider.getBestMatched(searchParamsObj)
+      if (lyrics) break
+    } catch {
+      // Try next provider.
+    }
+  }
+
+  if (lyrics == null) {
+    return notFound()
+  }
+
+  const normalizedLyrics = normalizeLRC(lyrics)
+
+  response = new Response(normalizedLyrics, {
     headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': LOGFLARE_API_KEY,
+      'content-type': 'text/plain; charset=utf-8',
+      'cache-control': 'public, max-age=86400',
     },
-    body: JSON.stringify([payload]),
   })
+
+  event.waitUntil(cache.put(cacheKey, response.clone()))
+
+  return response
 }

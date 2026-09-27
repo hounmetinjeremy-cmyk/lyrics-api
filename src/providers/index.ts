@@ -1,4 +1,5 @@
+export * from './Genius'
 export * from './GitHub'
-export * from './NetEase'
+export * from './LyricsOvh'
+export * from './ParolesNet'
 export * from './Provider'
-export * from './QQMusic'
