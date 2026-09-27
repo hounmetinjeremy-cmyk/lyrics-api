@@ -4,60 +4,59 @@ A Cloudflare Worker that finds song lyrics from multiple free sources and can tr
 
 ## Features
 
-- 🔎 **Text search**: artist + title → lyrics
-- 🌐 **Multi-source lyrics**: LyricsOvh, Genius, AZLyrics, SongLyrics, Musixmatch, Paroles.net, GitHub LRC
-- 🎤 **Audio transcription**: upload an audio file and get lyrics via Cloudflare Workers AI (Whisper)
-- 🖥️ **Built-in web UI**: open the worker URL to search lyrics or transcribe audio
-- 💰 **100 % free**: no paid API keys
+- 🎤 **Text search**: artist + title → lyrics
+- 📚 **Multi-source lyrics**: LyricsOvh, Genius, AZLyrics, SongLyrics, Musixmatch, Paroles.net, GitHub LRC
+- 🎙️ **Audio transcription**: upload an audio file and get lyrics via Cloudflare Workers AI (Whisper)
+- 🌐 **Built-in web UI**: open the worker URL to search lyrics or transcribe audio
+- 💯 **100 % free**: no paid API keys required
 
-## Quick start
+## Routes
 
-### 1. Install dependencies
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/` | Web interface |
+| `GET` | `/api/lyrics?name=Titre&artist=Artiste` | Search lyrics by artist and title |
+| `POST` | `/api/transcribe` | Transcribe audio with Whisper (multipart/form-data, field `audio`) |
+
+## Local development
 
 ```bash
+# 1. Clone your fork
+git clone https://github.com/hounmetinjeremy-cmyk/lyrics-api.git
+cd lyrics-api
+
+# 2. Install dependencies
 npm install
-```
 
-### 2. Authenticate wrangler
-
-```bash
-npx wrangler login
-```
-
-Then select the Cloudflare account you want to use.
-
-### 3. Run locally
-
-```bash
+# 3. Start local dev server
 npm run dev
 ```
 
-Open: http://localhost:8787/
+Open [http://localhost:8787](http://localhost:8787) in your browser.
 
-### 4. Deploy
+## Test the API
 
 ```bash
+# Search lyrics
+curl "http://localhost:8787/api/lyrics?artist=ive&name=after%20like"
+
+# Transcribe audio (Whisper works only in the cloud or with --remote)
+curl -X POST -F "audio=@chanson.mp3" "http://localhost:8787/api/transcribe"
+```
+
+## Deploy to Cloudflare Workers
+
+```bash
+# Login once (browser)
+npx wrangler login
+
+# Deploy
 npm run deploy
 ```
 
-After deployment, wrangler prints the public URL.
-
-## API usage
-
-### Search lyrics
-
-```bash
-curl "https://your-worker.your-subdomain.workers.dev/api/lyrics?artist=Daft+Punk&name=Get+Lucky"
-```
-
-### Transcribe audio
-
-```bash
-curl -F "audio=@song.mp3" "https://your-worker.your-subdomain.workers.dev/api/transcribe"
-```
+After deployment, Wrangler will print the production URL.
 
 ## Notes
 
-- Workers AI must be enabled on your Cloudflare account.
-- The free Workers AI plan has limits (file size, daily requests). Keep audio files under ~10 MB for best results.
-- Transcribing noisy music is harder than clean speech. The model works best when the vocals are clear.
+- The **AI transcription** (`/api/transcribe`) uses the Cloudflare Workers AI binding. It currently works on the real Workers platform, not fully in local dev.
+- Some lyrics sites may block Worker IPs; the code switches to the next provider automatically.
