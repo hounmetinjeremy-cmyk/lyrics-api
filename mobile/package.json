@@ -1,0 +1,20 @@
+{
+  "name": "lyrics-finder-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'No build step (vanilla HTML/JS/CSS)'",
+    "sync": "npx cap sync",
+    "add:android": "npx cap add android",
+    "open:android": "npx cap open android",
+    "build:apk": "cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

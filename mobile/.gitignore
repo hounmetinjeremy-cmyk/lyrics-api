@@ -1,0 +1,7 @@
+node_modules/
+android/
+ios/
+dist/
+*.apk
+*.aab
+.DS_Store
