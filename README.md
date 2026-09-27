@@ -1,31 +1,63 @@
 # Lyrics API
 
-A Cloudflare Worker that returns synced/unsynced song lyrics from multiple free sources.
+A Cloudflare Worker that finds song lyrics from multiple free sources and can transcribe audio with Whisper.
 
-Forked from [lujjjh/lyrics-api](https://github.com/lujjjh/lyrics-api).
+## Features
 
-## Sources
+- 🔎 **Text search**: artist + title → lyrics
+- 🌐 **Multi-source lyrics**: LyricsOvh, Genius, AZLyrics, SongLyrics, Musixmatch, Paroles.net, GitHub LRC
+- 🎤 **Audio transcription**: upload an audio file and get lyrics via Cloudflare Workers AI (Whisper)
+- 🖥️ **Built-in web UI**: open the worker URL to search lyrics or transcribe audio
+- 💰 **100 % free**: no paid API keys
 
-The API tries the following providers in order:
+## Quick start
 
-1. [Lyrics.ovh](https://lyrics.ovh/) – public lyrics API
-2. [Genius](https://genius.com/) – lyrics scraping
-3. GitHub LRC repository – for custom synced lyrics
-4. [Paroles.net](https://www.paroles.net/) – French lyrics scraping
-
-## Usage
-
-```
-GET /?name=Song%20Title&artist=Artist%20Name
-```
-
-Response: plain text lyrics.
-
-## Deploy
+### 1. Install dependencies
 
 ```bash
 npm install
-npm run publish
 ```
 
-You will need the [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) configured with your Cloudflare account.
+### 2. Authenticate wrangler
+
+```bash
+npx wrangler login
+```
+
+Then select the Cloudflare account you want to use.
+
+### 3. Run locally
+
+```bash
+npm run dev
+```
+
+Open: http://localhost:8787/
+
+### 4. Deploy
+
+```bash
+npm run deploy
+```
+
+After deployment, wrangler prints the public URL.
+
+## API usage
+
+### Search lyrics
+
+```bash
+curl "https://your-worker.your-subdomain.workers.dev/api/lyrics?artist=Daft+Punk&name=Get+Lucky"
+```
+
+### Transcribe audio
+
+```bash
+curl -F "audio=@song.mp3" "https://your-worker.your-subdomain.workers.dev/api/transcribe"
+```
+
+## Notes
+
+- Workers AI must be enabled on your Cloudflare account.
+- The free Workers AI plan has limits (file size, daily requests). Keep audio files under ~10 MB for best results.
+- Transcribing noisy music is harder than clean speech. The model works best when the vocals are clear.

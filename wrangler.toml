@@ -1,7 +1,9 @@
-[vars]
-WORKERS_DEV = true
+name = "lyrics-api"
+account_id = "26a324f0e475aeaace451e11617c1109"
+main = "src/index.ts"
+compatibility_date = "2024-09-01"
+workers_dev = true
 
-[build]
-watch_dir = "src"
-
-main = "dist/index.js"
+# Cloudflare Workers AI binding (used for Whisper audio transcription)
+[ai]
+binding = "AI"
