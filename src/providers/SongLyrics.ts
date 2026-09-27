@@ -1,4 +1,4 @@
-import { createURLWithQuery, fetchJSON } from '../utils'
+import { createURLWithQuery, fetchText } from '../utils'
 import { Provider, SearchParams } from './Provider'
 import { stripHtml } from './utils'
 
