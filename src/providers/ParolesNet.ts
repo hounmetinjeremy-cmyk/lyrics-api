@@ -1,27 +1,18 @@
 import { fetchText } from '../utils'
 import { Provider, SearchParams } from './Provider'
+import { slugifyHyphen, stripHtml } from './utils'
 
 const BASE_URL = 'https://www.paroles.net'
 
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-
 export class ParolesNet implements Provider {
   async getBestMatched({ name, artist }: SearchParams) {
-    const url = `${BASE_URL}/${slugify(artist)}/paroles-${slugify(name)}`
+    const url = `${BASE_URL}/${slugifyHyphen(artist)}/paroles-${slugifyHyphen(name)}`
     try {
       const html = await fetchText(url)
-      const parser = new DOMParser()
-      const doc = parser.parseFromString(html, 'text/html')
-
-      // Class used by paroles.net to wrap the song lyrics.
-      const container = doc.querySelector('.song-text') || doc.querySelector('[class*="lyrics"]')
-      return container?.textContent?.trim() || undefined
+      // The lyrics are inside the .song-text wrapper.
+      const match = html.match(/<div class="song-text"[^>]*>([\s\S]*?)<\/div>\s*<div class="song-info"/i)
+      if (!match) return
+      return stripHtml(match[1])
     } catch {
       return
     }

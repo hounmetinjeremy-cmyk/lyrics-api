@@ -1,4 +1,14 @@
-import { Genius, GitHub, LyricsOvh, ParolesNet, Provider, SearchParams } from './providers'
+import {
+  AZLyrics,
+  Genius,
+  GitHub,
+  LyricsOvh,
+  Musixmatch,
+  ParolesNet,
+  Provider,
+  SearchParams,
+  SongLyrics,
+} from './providers'
 import { createURLWithQuery, getUserId, normalizeLRC } from './utils'
 
 const cache = caches.default
@@ -51,7 +61,16 @@ const handleRequest = async (event: FetchEvent) => {
   if (response) return response
 
   const searchParamsObj: SearchParams = { name, artist, rawName, rawArtist }
-  const providers: Provider[] = [new LyricsOvh(), new Genius(), new GitHub(), new ParolesNet()]
+
+  const providers: Provider[] = [
+    new LyricsOvh(),
+    new Genius(),
+    new AZLyrics(),
+    new SongLyrics(),
+    new Musixmatch(),
+    new GitHub(),
+    new ParolesNet(),
+  ]
 
   let lyrics: string | undefined
   for (const provider of providers) {
@@ -72,7 +91,8 @@ const handleRequest = async (event: FetchEvent) => {
   response = new Response(normalizedLyrics, {
     headers: {
       'content-type': 'text/plain; charset=utf-8',
-      'cache-control': 'public, max-age=86400',
+      'cache-control': 'public, max-age=3600',
+      'x-user-id': await getUserId(request),
     },
   })
 
