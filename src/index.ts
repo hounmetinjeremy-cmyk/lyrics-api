@@ -2,12 +2,15 @@ import {
   AZLyrics,
   Genius,
   GitHub,
+  ListeningResult,
   LyricsOvh,
+  Lrclib,
   Musixmatch,
   ParolesNet,
   Provider,
   SearchParams,
   SongLyrics,
+  findByLyricsSnippet,
 } from './providers'
 import { createURLWithQuery, getUserId, normalizeLRC, transcribeWithWhisper, Env as WhisperEnv } from './utils'
 
@@ -28,41 +31,52 @@ const html = `<!DOCTYPE html>
   button { background: #38bdf8; color: #0f172a; cursor: pointer; font-weight: bold; }
   button:disabled { opacity: .6; cursor: not-allowed; }
   pre { background: #1e293b; padding: 1rem; border-radius: .4rem; white-space: pre-wrap; word-break: break-word; min-height: 4rem; }
-  .tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
-  .tab { background: #334155; color: white; flex: 1; border: none; }
+  .tabs { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .tab { background: #334155; color: white; flex: 1; min-width: 120px; border: none; }
   .tab.active { background: #38bdf8; color: #0f172a; }
   .hidden { display: none; }
   .hint { font-size: .85rem; color: #94a3b8; margin-top: .25rem; }
+  .tag { display: inline-block; background: #334155; color: #94a3b8; padding: .15rem .5rem; border-radius: 1rem; font-size: .75rem; margin-bottom: .5rem; }
+  .recording { animation: pulse 1.2s infinite; background: #ef4444 !important; color: white !important; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 </style>
 </head>
 <body>
   <h1>🎵 Lyrics Finder</h1>
   <div class="tabs">
     <button class="tab active" id="tabText" onclick="switchTab('text')">Paroles par titre</button>
-    <button class="tab" id="tabAudio" onclick="switchTab('audio')">Paroles par audio</button>
+    <button class="tab" id="tabListen" onclick="switchTab('listen')">🎙 Identifier</button>
+    <button class="tab" id="tabAudio" onclick="switchTab('audio')">Transcrire</button>
   </div>
 
   <section id="panelText">
     <input id="artist" placeholder="Nom de l'artiste">
     <input id="title" placeholder="Titre de la chanson">
     <button onclick="searchLyrics()">Rechercher les paroles</button>
-    <p class="hint">Sources : lyrics.ovh, Genius, AZLyrics, SongLyrics, Musixmatch, Paroles.net...</p>
+    <p class="hint">Sources : lyrics.ovh, Genius, AZLyrics, SongLyrics, Musixmatch, Paroles.net, lrclib</p>
     <pre id="resultText">Les paroles apparaîtront ici...</pre>
+  </section>
+
+  <section id="panelListen" class="hidden">
+    <button id="listenBtn" onclick="toggleListen()">🎙 Appuyer pour écouter</button>
+    <p class="hint">Écoute 10 secondes, identifie le morceau et affiche les paroles.</p>
+    <div id="listenInfo"></div>
+    <pre id="resultListen">Le résultat apparaîtra ici...</pre>
   </section>
 
   <section id="panelAudio" class="hidden">
     <input type="file" id="audioFile" accept="audio/*">
     <button onclick="transcribeAudio()">Transcrire l'audio</button>
-    <p class="hint">Transcription par Whisper sur Cloudflare Workers AI (max ~10 Mo, plus lent).</p>
+    <p class="hint">Transcription par Whisper sur Cloudflare Workers AI (max ~10 Mo).</p>
     <pre id="resultAudio">La transcription apparaîtra ici...</pre>
   </section>
 
 <script>
 function switchTab(name) {
-  document.getElementById('panelText').classList.toggle('hidden', name !== 'text')
-  document.getElementById('panelAudio').classList.toggle('hidden', name !== 'audio')
-  document.getElementById('tabText').classList.toggle('active', name === 'text')
-  document.getElementById('tabAudio').classList.toggle('active', name === 'audio')
+  ['Text','Listen','Audio'].forEach(t => {
+    document.getElementById('panel' + t).classList.toggle('hidden', name !== t.toLowerCase())
+    document.getElementById('tab' + t).classList.toggle('active', name === t.toLowerCase())
+  })
 }
 
 async function searchLyrics() {
@@ -78,6 +92,50 @@ async function searchLyrics() {
   } catch (e) {
     out.textContent = 'Erreur : ' + e.message
   }
+}
+
+let mediaRecorder, listenChunks = [], listenTimer = null
+
+async function toggleListen() {
+  const btn = document.getElementById('listenBtn')
+  const out = document.getElementById('resultListen')
+  const info = document.getElementById('listenInfo')
+
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop()
+    clearTimeout(listenTimer)
+    return
+  }
+
+  listenChunks = []
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  mediaRecorder = new MediaRecorder(stream)
+  mediaRecorder.ondataavailable = e => { if (e.data.size) listenChunks.push(e.data) }
+  mediaRecorder.onstop = async () => {
+    btn.classList.remove('recording')
+    btn.textContent = '🎙 Appuyer pour écouter'
+    out.textContent = 'Identification en cours...'
+    const blob = new Blob(listenChunks, { type: 'audio/webm' })
+    const form = new FormData()
+    form.append('audio', new File([blob], 'listen.webm'))
+    try {
+      const res = await fetch('/api/listen', { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Échec')
+      info.innerHTML = '<span class="tag">' + (data.source || '') + '</span><br><strong>' +
+        data.artistName + ' — ' + data.name + '</strong>'
+      out.textContent = data.lyrics || '(paroles non disponibles)'
+    } catch (e) {
+      out.textContent = 'Erreur : ' + e.message
+    }
+    stream.getTracks().forEach(t => t.stop())
+  }
+  mediaRecorder.start(100)
+  btn.classList.add('recording')
+  btn.textContent = '⏹ Écoute en cours... appuyer pour arrêter'
+  out.textContent = 'Écoute... chante ou joue la musique'
+  info.innerHTML = ''
+  listenTimer = setTimeout(() => mediaRecorder.stop(), 12000)
 }
 
 async function transcribeAudio() {
@@ -141,6 +199,10 @@ export default {
         return handleLyrics(request, ctx)
       }
 
+      if (pathname === '/api/listen' && request.method === 'POST') {
+        return handleListen(request, env)
+      }
+
       if (pathname === '/api/transcribe' && request.method === 'POST') {
         return handleTranscribe(request, env)
       }
@@ -186,6 +248,7 @@ async function handleLyrics(request: Request, ctx: ExecutionContext): Promise<Re
     new Musixmatch(),
     new GitHub(),
     new ParolesNet(),
+    new Lrclib(),
   ]
 
   let lyrics: string | undefined
@@ -236,5 +299,42 @@ async function handleTranscribe(request: Request, env: Env): Promise<Response> {
     return textResponse(text)
   } catch (error: any) {
     return textResponse(`Transcription error: ${error.message || error}`, 500)
+  }
+}
+
+async function handleListen(request: Request, env: Env): Promise<Response> {
+  if (!env.AI) {
+    return jsonResponse(JSON.stringify({ error: 'AI binding is not configured' }), 500)
+  }
+
+  try {
+    const formData = await request.formData()
+    const audio = formData.get('audio')
+
+    if (!audio || !(audio instanceof File)) {
+      return jsonResponse(JSON.stringify({ error: 'Missing audio file' }), 400)
+    }
+
+    const out = document.getElementById('resultListen')
+    const snippet = await transcribeWithWhisper(audio, env)
+
+    if (!snippet.trim()) {
+      return jsonResponse(JSON.stringify({ error: 'No voice detected' }), 422)
+    }
+
+    const matched = await findByLyricsSnippet(snippet)
+
+    if (!matched) {
+      return jsonResponse(JSON.stringify({ error: 'Could not identify song', transcription: snippet }), 404)
+    }
+
+    const result: ListeningResult = {
+      ...matched,
+      source: 'lrclib.net (detected by lyrics)',
+    }
+
+    return jsonResponse(JSON.stringify(result))
+  } catch (error: any) {
+    return jsonResponse(JSON.stringify({ error: error.message || 'Listen error' }), 500)
   }
 }
