@@ -1,6 +1,7 @@
 export * from './AZLyrics'
 export * from './Genius'
 export * from './GitHub'
+export * from './Lrclib'
 export * from './LyricsOvh'
 export * from './Musixmatch'
 export * from './ParolesNet'
