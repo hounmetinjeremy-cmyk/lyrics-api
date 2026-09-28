@@ -14,18 +14,40 @@ import {
 } from './providers'
 import { createURLWithQuery, getUserId, normalizeLRC, transcribeWithWhisper, Env as WhisperEnv } from './utils'
 
-export interface Env extends WhisperEnv {}
+export interface Env extends WhisperEnv {
+  MANIFEST?: string
+  SERVICE_WORKER?: string
+}
 
 const cache = caches.default
+
+const headMeta = `<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<meta name="background-color" content="#0f172a">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Trouvez les paroles de vos chansons ou identifiez un morceau par audio.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lyrics Finder">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%2338bdf8'/%3E%3Ctext x='90' y='130' font-size='110' text-anchor='middle'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E">
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
+if (window.matchMedia('(display-mode: standalone)').matches && 'BeforeInstallPromptEvent' in window) {
+  // PWA install prompt handled by browser
+}
+<\/script>`
 
 const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+${headMeta}
 <title>Lyrics Finder</title>
 <style>
-  body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; background: #0f172a; color: #e2e8f0; }
+  body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; padding-bottom: 2rem; background: #0f172a; color: #e2e8f0; }
   h1 { color: #38bdf8; }
   input, button { font-size: 1rem; padding: .65rem; border-radius: .4rem; border: none; margin: .35rem 0; width: 100%; box-sizing: border-box; }
   button { background: #38bdf8; color: #0f172a; cursor: pointer; font-weight: bold; }
@@ -39,10 +61,12 @@ const html = `<!DOCTYPE html>
   .tag { display: inline-block; background: #334155; color: #94a3b8; padding: .15rem .5rem; border-radius: 1rem; font-size: .75rem; margin-bottom: .5rem; }
   .recording { animation: pulse 1.2s infinite; background: #ef4444 !important; color: white !important; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+  #installBtn { background: #22c55e; }
 </style>
 </head>
 <body>
   <h1>🎵 Lyrics Finder</h1>
+  <button id="installBtn" class="hidden" onclick="installApp()">📲 Installer l'application</button>
   <div class="tabs">
     <button class="tab active" id="tabText" onclick="switchTab('text')">Paroles par titre</button>
     <button class="tab" id="tabListen" onclick="switchTab('listen')">🎙 Identifier</button>
@@ -72,6 +96,21 @@ const html = `<!DOCTYPE html>
   </section>
 
 <script>
+let deferredInstallPrompt = null
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  deferredInstallPrompt = e
+  document.getElementById('installBtn').classList.remove('hidden')
+})
+
+async function installApp() {
+  if (!deferredInstallPrompt) return
+  deferredInstallPrompt.prompt()
+  await deferredInstallPrompt.userChoice
+  deferredInstallPrompt = null
+  document.getElementById('installBtn').classList.add('hidden')
+}
+
 function switchTab(name) {
   ['Text','Listen','Audio'].forEach(t => {
     document.getElementById('panel' + t).classList.toggle('hidden', name !== t.toLowerCase())
@@ -189,9 +228,45 @@ export default {
     }
 
     try {
+      if (pathname === '/manifest.json') {
+        const manifest = env.MANIFEST ?? JSON.stringify({
+          name: 'Lyrics Finder',
+          short_name: 'Lyrics',
+          start_url: '/',
+          display: 'standalone',
+          background_color: '#0f172a',
+          theme_color: '#0f172a',
+          orientation: 'portrait',
+          icons: [
+            {
+              src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%2338bdf8'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E",
+              sizes: '192x192',
+              type: 'image/svg+xml',
+              purpose: 'any maskable',
+            },
+            {
+              src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='64' fill='%2338bdf8'/%3E%3Ctext x='256' y='350' font-size='300' text-anchor='middle'%3E%F0%9F%8E%B5%3C/text%3E%3C/svg%3E",
+              sizes: '512x512',
+              type: 'image/svg+xml',
+              purpose: 'any maskable',
+            },
+          ],
+        })
+        return new Response(manifest, {
+          headers: { 'content-type': 'application/manifest+json; charset=utf-8', ...corsHeaders },
+        })
+      }
+
+      if (pathname === '/sw.js') {
+        const sw = env.SERVICE_WORKER ?? `const CACHE_NAME='lyrics-finder-v1';const URLS_TO_CACHE=['/'];self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(URLS_TO_CACHE)))});self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match('/'))))});`
+        return new Response(sw, {
+          headers: { 'content-type': 'application/javascript; charset=utf-8', ...corsHeaders },
+        })
+      }
+
       if (pathname === '/') {
         return new Response(html, {
-          headers: { 'content-type': 'text/html; charset=utf-8', ...corsHeaders },
+          headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', ...corsHeaders },
         })
       }
 
@@ -315,7 +390,6 @@ async function handleListen(request: Request, env: Env): Promise<Response> {
       return jsonResponse(JSON.stringify({ error: 'Missing audio file' }), 400)
     }
 
-    const out = document.getElementById('resultListen')
     const snippet = await transcribeWithWhisper(audio, env)
 
     if (!snippet.trim()) {
