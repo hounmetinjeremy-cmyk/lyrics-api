@@ -28,6 +28,10 @@ jobs:
         working-directory: ./mobile
         run: npm install
 
+      - name: Install TypeScript
+        working-directory: ./mobile
+        run: npm install -D typescript
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
