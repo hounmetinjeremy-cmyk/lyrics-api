@@ -19,18 +19,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 18
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
 
-      - name: Install mobile dependencies
+      - name: Install mobile dependencies + TypeScript
         working-directory: ./mobile
-        run: npm install
+        run: |
+          npm install
+          npm install -D typescript
 
-      - name: Install TypeScript
+      - name: Convert capacitor config to JS
         working-directory: ./mobile
-        run: npm install -D typescript
+        run: |
+          cat > capacitor.config.js << 'JSEOF'
+          const config = {
+            appId: 'com.hounmetinjeremy.lyricsfinder',
+            appName: 'Lyrics Finder',
+            webDir: 'www',
+            server: {
+              androidScheme: 'https',
+              allowNavigation: ['lyrics-api.hounmetinjeremy.workers.dev'],
+            },
+            plugins: {
+              SplashScreen: {
+                launchShowDuration: 2000,
+                backgroundColor: '#0f172a',
+              },
+            },
+          };
+          module.exports = config;
+          JSEOF
+          rm -f capacitor.config.ts
+
+      - name: Add Android platform
+        working-directory: ./mobile
+        run: npx cap add android
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -46,10 +71,6 @@ jobs:
 
       - name: Accept SDK licenses
         run: yes | sdkmanager --licenses || true
-
-      - name: Add Android platform
-        working-directory: ./mobile
-        run: npx cap add android
 
       - name: Sync Capacitor with Android
         working-directory: ./mobile
