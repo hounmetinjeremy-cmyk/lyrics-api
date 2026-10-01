@@ -8,6 +8,7 @@ Application Android qui transforme ton Lyrics Finder web en APK native avec bout
 - 🎤 Écoute micro : enregistre 10 sec, transcrit avec Whisper, identifie la chanson et affiche les paroles
 - 📱 Interface mobile optimisée
 - 🚀 Prêt à être compilé en APK avec Capacitor
+- 🏗️ Build automatique CI (GitHub Actions)
 
 ## Prérequis
 
@@ -36,7 +37,7 @@ Pour avoir un vrai bouton flottant au-dessus des autres applications (comme Shaz
 
 👉 [FLOATING_BUTTON_ANDROID.md](./FLOATING_BUTTON_ANDROID.md)
 
-## Builder l'APK
+## Builder l'APK en local
 
 ```bash
 npx cap open android
@@ -54,6 +55,16 @@ L'APK debug se trouve dans :
 ```
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Build automatique via GitHub Actions
+
+Un workflow GitHub Actions build automatiquement l'APK à chaque push sur `main`.
+
+**Lancer un build manuel :**
+1. Ouvrir l'onglet **Actions** du repo
+2. Sélectionner **Build Android APK**
+3. Cliquer **Run workflow**
+4. Télécharger l'APK dans les artifacts.
 
 ## Configuration de l'API
 
