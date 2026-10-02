@@ -24,22 +24,21 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install mobile dependencies + TypeScript
+      - name: Install mobile dependencies
         working-directory: ./mobile
-        run: |
-          npm install
-          npm install -D typescript
+        run: npm install
 
-      - name: Convert capacitor.config.ts to JS
+      - name: Add Android platform
         working-directory: ./mobile
-        run: |
-          npx tsc capacitor.config.ts --outDir . --target es2020 --module commonjs --esModuleInterop
-          mv capacitor.config.js capacitor.config.mjs
-        continue-on-error: true
+        run: npx cap add android
 
-      - name: Run cap sync
+      - name: Sync Capacitor with Android
         working-directory: ./mobile
         run: npx cap sync android
+
+      - name: Apply Quick Settings Tile patch
+        working-directory: ./mobile
+        run: bash apply-tile-patch.sh
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -55,6 +54,10 @@ jobs:
 
       - name: Accept SDK licenses
         run: yes | sdkmanager --licenses || true
+
+      - name: Grant permissions for Gradle
+        working-directory: ./mobile/android
+        run: chmod +x ./gradlew
 
       - name: Build Debug APK
         working-directory: ./mobile/android
