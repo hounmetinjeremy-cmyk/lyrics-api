@@ -17,6 +17,7 @@ cp "$PATCH_DIR/AndroidManifest.xml" "$ANDROID_DIR/app/src/main/AndroidManifest.x
 echo "=== Copie du service QS Tile ==="
 mkdir -p "$ANDROID_DIR/app/src/main/java/com/hounmetinjeremy/lyricsfinder"
 cp "$PATCH_DIR/LyricsTileService.kt" "$ANDROID_DIR/app/src/main/java/com/hounmetinjeremy/lyricsfinder/LyricsTileService.kt"
+cp "$PATCH_DIR/MainActivity.kt" "$ANDROID_DIR/app/src/main/java/com/hounmetinjeremy/lyricsfinder/MainActivity.kt"
 
 echo "=== Copie de l'icône ==="
 mkdir -p "$ANDROID_DIR/app/src/main/res/drawable"
