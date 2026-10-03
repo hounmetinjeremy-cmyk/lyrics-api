@@ -1,140 +1,195 @@
 const API_BASE = 'https://lyrics-api.hounmetinjeremy.workers.dev'
 
-// Navigation onglets
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
-    tab.classList.add('active')
-    const panelId = tab.getAttribute('data-tab')
-    document.getElementById(panelId).classList.add('active')
-  })
-})
-
-// Toolbar title
-const title = document.getElementById('page-title')
-title.textContent = 'Lyrics Finder'
-
-// Chargement initial
-const searchInputArtist = document.getElementById('search-artist')
-const searchInputName = document.getElementById('search-name')
-const searchButton = document.getElementById('search-button')
-const lyricsResult = document.getElementById('lyrics-result')
-
-const listenTabBtn = document.querySelector('[data-tab="listen"]')
-const listenStatus = document.getElementById('listen-status')
-
-async function fetchLyrics(artist, name) {
-  const res = await fetch(`${API_BASE}/api/lyrics?artist=${encodeURIComponent(artist)}&name=${encodeURIComponent(name)}`)
-  if (!res.ok) throw new Error((await res.json()).error || 'Pas de paroles trouvées')
-  return res.json()
-}
-
 function escapeHtml(str) {
-  return str.replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]))
+  return String(str).replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]))
 }
 
-function displayLyrics(data, artist, name) {
-  const lines = data.lyrics.split('\n').filter(Boolean).slice(0, 40)
-  lyricsResult.innerHTML = `
-    <div class="song-header">
-      <h2>${escapeHtml(data.name || name)}</h2>
-      <h3>${escapeHtml(data.artist || artist)}</h3>
-      ${data.album ? `<p class="meta">Album : ${escapeHtml(data.album)}</p>` : ''}
+function showMessage(id, text, type = 'info') {
+  const el = document.getElementById(id)
+  if (!el) return
+  el.textContent = text
+  el.classList.toggle('error', type === 'error')
+}
+
+function formatLyrics(data, artist, title) {
+  const lines = (data.lyrics || 'Aucune parole trouvée').split('\n')
+  return `
+    <div class="song-info">
+      <h3>${escapeHtml(data.name || title)} — ${escapeHtml(data.artist || artist)}</h3>
+      ${data.album ? `<p>Album : ${escapeHtml(data.album)}</p>` : ''}
     </div>
-    <pre class="lyrics-text">${escapeHtml(lines.join('\n'))}${data.lyrics.split('\n').length > 40 ? '\n...' : ''}</pre>
+    <pre>${escapeHtml(lines.slice(0, 40).join('\n'))}${lines.length > 40 ? '\n...' : ''}</pre>
   `
 }
 
-searchButton.addEventListener('click', async () => {
-  const artist = searchInputArtist.value.trim()
-  const name = searchInputName.value.trim()
-  if (!artist || !name) return
-  lyricsResult.innerHTML = '<p class="loading">Recherche en cours...</p>'
-  try {
-    const data = await fetchLyrics(artist, name)
-    displayLyrics(data, artist, name)
-  } catch (e) {
-    lyricsResult.innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`
-  }
+// Navigation onglets
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'))
+  const tab = document.querySelector(`.tab[data-tab="${tabName}"]`)
+  const panel = document.getElementById(`panel-${tabName}`)
+  if (tab) tab.classList.add('active')
+  if (panel) panel.classList.add('active')
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    switchTab(tab.getAttribute('data-tab'))
+  })
 })
 
-// === Quick Settings Tile integration ===
-function handleQuickTileOpen() {
-  // Focus listen tab
-  listenTabBtn.click()
-  startListening()
+// Recherche paroles
+const btnSearch = document.getElementById('btnSearch')
+const artistInput = document.getElementById('artist')
+const titleInput = document.getElementById('title')
+const resultText = document.getElementById('resultText')
+
+if (btnSearch) {
+  btnSearch.addEventListener('click', async () => {
+    const artist = (artistInput?.value || '').trim()
+    const title = (titleInput?.value || '').trim()
+    if (!artist || !title) {
+      showMessage('resultText', 'Veuillez saisir un artiste et un titre.', 'error')
+      return
+    }
+    resultText.textContent = 'Recherche en cours...'
+    try {
+      const res = await fetch(`${API_BASE}/api/lyrics?artist=${encodeURIComponent(artist)}&name=${encodeURIComponent(title)}`)
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Paroles introuvables')
+      }
+      resultText.innerHTML = formatLyrics(data, artist, title)
+    } catch (err) {
+      showMessage('resultText', 'Erreur : ' + err.message, 'error')
+    }
+  })
 }
 
-function startListening() {
-  listenStatus.textContent = '🎙️ Écoute en cours... Demande d\'autorisation micro'
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(() => {
-      listenStatus.textContent = '🎧 Écoute 10 secondes...'
-      startRecording()
-    })
-    .catch(err => {
-      listenStatus.textContent = `❌ Micro non autorisé : ${err.message}`
-    })
-}
+// Écoute audio
+let isListening = false
+let mediaRecorder = null
+let recordedChunks = []
+let currentStream = null
+let listenTimeout = null
 
-let mediaRecorder
-let chunks = []
+const btnListen = document.getElementById('btnListen')
+const pulseRing = document.getElementById('pulseRing')
+const listenStatus = document.getElementById('listenStatus')
+const resultListen = document.getElementById('resultListen')
 
-function startRecording() {
-  chunks = []
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    mediaRecorder = new MediaRecorder(stream)
-    mediaRecorder.ondataavailable = e => chunks.push(e.data)
+async function startListening() {
+  if (isListening) return
+  isListening = true
+  recordedChunks = []
+
+  if (btnListen) {
+    btnListen.disabled = true
+    btnListen.textContent = '⏹ Arrêter l\'écoute'
+  }
+  if (pulseRing) pulseRing.classList.add('active')
+  if (listenStatus) listenStatus.textContent = 'Demande de permission microphone...'
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    currentStream = stream
+
+    if (listenStatus) listenStatus.textContent = 'Écoute en cours... (10 secondes maximum)'
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+    mediaRecorder = new MediaRecorder(stream, { mimeType })
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) recordedChunks.push(e.data)
+    }
     mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: 'audio/webm' })
-      await sendListen(blob)
+      const blob = new Blob(recordedChunks, { type: mimeType })
+      await sendAudio(blob)
+      stopAllTracks(stream)
     }
+
     mediaRecorder.start()
-    setTimeout(() => mediaRecorder.stop(), 10000)
-  })
-}
-
-async function sendListen(blob) {
-  listenStatus.textContent = '🔍 Identification...'
-  try {
-    const res = await fetch(`${API_BASE}/api/listen`, { method: 'POST', body: blob })
-    if (!res.ok) throw new Error('Échec identification')
-    const data = await res.json()
-    if (data.artist && data.name) {
-      document.querySelector('[data-tab="search"]').click()
-      searchInputArtist.value = data.artist
-      searchInputName.value = data.name
-      const lyrics = await fetchLyrics(data.artist, data.name)
-      displayLyrics(lyrics, data.artist, data.name)
-      listenStatus.textContent = '✅ Trouvé !'
+    listenTimeout = setTimeout(() => stopListening(), 10000)
+  } catch (err) {
+    console.error(err)
+    let message = 'Erreur micro : '
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      message += 'Permission refusée. Vérifie Paramètres > Applications > Lyrics Finder > Microphone.'
+    } else if (err.name === 'NotFoundError') {
+      message += 'Aucun microphone détecté.'
     } else {
-      listenStatus.textContent = '❌ Chanson non identifiée'
+      message += err.name + (err.message ? ' — ' + err.message : '')
     }
-  } catch (e) {
-    listenStatus.textContent = `❌ Erreur : ${e.message}`
+    if (listenStatus) listenStatus.textContent = message
+    resetListenUI()
   }
 }
 
-// Bouton écoute manuel
-document.getElementById('listen-button').addEventListener('click', () => {
-  document.querySelector('[data-tab="listen"]').click()
-  startListening()
-})
-
-// Gestion de l'ouverture via Quick Settings Tile / notification
-document.addEventListener('deviceready', () => {
-  const intent = (window.cordova && window.cordova.plugins && window.cordova.plugins.broadcastIntent) || null
-  if (intent && intent.extras) {
-    if (intent.extras.openListen === true || intent.extras.openListen === 'true') {
-      handleQuickTileOpen()
-    }
+function stopListening() {
+  if (listenTimeout) {
+    clearTimeout(listenTimeout)
+    listenTimeout = null
   }
-}, false)
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop()
+  } else {
+    resetListenUI()
+  }
+}
 
-// Fallback si ouverture en web avec URL param ?openListen=1
-if (new URLSearchParams(window.location.search).get('openListen')) {
-  window.addEventListener('load', () => {
-    handleQuickTileOpen()
+function stopAllTracks(stream) {
+  if (stream) stream.getTracks().forEach(t => t.stop())
+}
+
+function resetListenUI() {
+  isListening = false
+  if (btnListen) {
+    btnListen.disabled = false
+    btnListen.textContent = '🎙️ Appuyer pour écouter'
+  }
+  if (pulseRing) pulseRing.classList.remove('active')
+}
+
+async function sendAudio(blob) {
+  try {
+    if (listenStatus) listenStatus.textContent = 'Identification en cours...'
+    const formData = new FormData()
+    formData.append('audio', blob, 'recording.webm')
+
+    const res = await fetch(`${API_BASE}/api/listen`, {
+      method: 'POST',
+      body: formData
+    })
+    const data = await res.json()
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Identification impossible')
+    }
+    if (resultListen) resultListen.innerHTML = formatLyrics(data, data.artist || 'Inconnu', data.name || 'Inconnu')
+    if (listenStatus) listenStatus.textContent = '✅ Trouvé !'
+  } catch (err) {
+    showMessage('resultListen', 'Erreur : ' + err.message, 'error')
+    if (listenStatus) listenStatus.textContent = '❌ Échec de l\'identification'
+  }
+  resetListenUI()
+}
+
+if (btnListen) {
+  btnListen.addEventListener('click', () => {
+    if (isListening) {
+      stopListening()
+    } else {
+      startListening()
+    }
   })
+}
+
+// Ouverture depuis Quick Settings Tile
+function openListenTab() {
+  switchTab('listen')
+  setTimeout(() => {
+    if (btnListen && !isListening) btnListen.click()
+  }, 500)
+}
+
+if (new URLSearchParams(window.location.search).get('openListen')) {
+  window.addEventListener('load', openListenTab)
 }
